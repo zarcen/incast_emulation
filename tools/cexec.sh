@@ -1,16 +1,16 @@
 #!/bin/bash
 
-# cexec.sh - (Cluster) EXECute a command on all nodes
+# cexec.sh - (Cluster) EXECute a command on all nodes (include the current node)
 # Usage: ./cexec.sh "sudo ~/essential_install.sh"
 
 if [ -z $1 ]; then
-    echo "cexec.sh - (Cluster) EXECute a command on all nodes"
+    echo "cexec.sh - (Cluster) EXECute a command on all nodes (include the current node)"
     echo "Usage: ./cexec.sh \"sudo ~/essential_install.sh\""
     exit 0
 fi
 
 cmd=$1
-serverlist='node1 node2 node3 node4 node5 node6 node7 node8'
+serverlist='node-0 node-1 node-2 node-3 node-4'
 declare -A bg_pids
 for node in $serverlist; do
     echo "executing '$1' on $node"
