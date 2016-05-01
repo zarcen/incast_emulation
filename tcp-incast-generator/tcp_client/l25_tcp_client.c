@@ -12,7 +12,7 @@
 #include <pthread.h>
 #include <math.h>
 
-#define MAX_READ 1000000
+#define MAX_READ 5000000
 
 // prototypes
 void *listen_connection(void *ptr);
@@ -113,6 +113,8 @@ int main (int argc, char *argv[]) {
 
     fscanf(fd, "size %u\n", &req_size);
     printf("Request size: %u\n", req_size);
+    req_size = req_size / num_dest;
+    printf("Request size on each server: %u\n", req_size);
     req_size_n = htonl(req_size);
 
     fscanf(fd, "iterations %d\n", &iter);
