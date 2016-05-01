@@ -1,0 +1,6 @@
+destinations 2
+1 dest 10.10.4.1 5001 -1
+2 dest 10.10.5.1 5001 -1
+size 524288
+iterations 100
+l25 0

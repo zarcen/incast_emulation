@@ -10,7 +10,7 @@ TARGET = l25_tcp_client
 objects = $(SOURCES:.c=.o)
 
 proxy: $(objects) 
-	$(CC) $(CFLAGS) -o $(TARGET) $(objects)
+	$(CC) $(CFLAGS) -o $(TARGET) $(objects) -lm
 
 all: $(TARGET)
 

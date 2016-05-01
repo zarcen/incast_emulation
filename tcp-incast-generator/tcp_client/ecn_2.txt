@@ -1,0 +1,63 @@
+Reading file: 5servers.dat
+Number of destinations: 5
+0 - Dest: 10.10.4.1, 5001 - Src: -1
+1 - Dest: 10.10.5.1, 5001 - Src: -1
+2 - Dest: 10.10.7.1, 5001 - Src: -1
+3 - Dest: 10.10.6.1, 5001 - Src: -1
+4 - Dest: 10.10.2.1, 5001 - Src: -1
+Request size: 524288
+Iterations: 1000
+L2.5: 0
+Quick ACK: 1
+Connected to 10.10.4.1:5001
+Quick ACK: 1
+Connected to 10.10.5.1:5001
+Quick ACK: 1
+Connected to 10.10.7.1:5001
+Quick ACK: 1
+Connected to 10.10.6.1:5001
+Quick ACK: 1
+Connected to 10.10.2.1:5001
+
+Connection: 0
+Avg: 207.271 msec
+Min: 123.554 msec
+Max: 398.075 msec
+Goodput: 19.298 Mbps
+Connection: 1
+Avg: 204.899 msec
+Min: 127.054 msec
+Max: 410.217 msec
+Goodput: 19.522 Mbps
+Connection: 2
+Avg: 210.062 msec
+Min: 129.873 msec
+Max: 413.917 msec
+Goodput: 19.042 Mbps
+Connection: 3
+Avg: 209.554 msec
+Min: 124.210 msec
+Max: 420.842 msec
+Goodput: 19.088 Mbps
+Connection: 4
+Avg: 208.491 msec
+Min: 121.964 msec
+Max: 407.345 msec
+Goodput: 19.185 Mbps
+Overall
+Avg: 247.708 msec
+Min: 219.850 msec
+Max: 420.907 msec
+Total sent: 2500.00 MB
+Total duration: 247.7080 sec
+Overall Goodput: 80.740 Mbps
+avg_usec + 3 * stddev = 389160.987323
+avg_usec + 2 * stddev = 342009.991548
+avg_usec + 1 * stddev = 294858.995774
+avg_usec = 247708.000000
+
+Histogram
+0 - 670
+1 - 195
+2 - 59
+3 - 76
