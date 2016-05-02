@@ -10,7 +10,7 @@ if [ -z $1 ]; then
 fi
 
 REALPATH=`readlink -f $1`
-serverlist='server1 server2 server3 server4 server5 server6 server7 server8 server9 server10 switch snmps'
+serverlist='server1 server2 server3 server4 server5 server6 server7 server8 server9 server10 switch'
 
 # Remove the last component of the pathname
 # For example, /users/lc/foo/tar ---> /users/lc/foo

@@ -10,7 +10,7 @@ if [ -z $1 ]; then
 fi
 
 cmd=$1
-serverlist='server1 server2 server3 server4 server5 server6 server7 server8 server9 server10 switch snmps'
+serverlist='server1 server2 server3 server4 server5 server6 server7 server8 server9 server10 switch'
 declare -A bg_pids
 for node in $serverlist; do
     echo "executing '$1' on $node"
