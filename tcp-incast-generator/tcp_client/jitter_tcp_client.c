@@ -10,6 +10,7 @@
 #include <sys/time.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
+#include <math.h>
 
 #define MAX_READ 1000000
 
@@ -35,21 +36,31 @@ int l25;
 
 int histogram[4];    
 
+double getStdDev(int avg, int x[], int len) {
+    double var = 0;
+    for (int i = 0; i < len; i++) {
+        var += pow(x[i] - avg , 2);
+    }
+    var /= len;
+    return sqrt(var);
+
+}
+
 int main (int argc, char *argv[]) {
     FILE *fd;
+    FILE *outfd;
     int ret;
     //int max_sec;
     int max_usec;
     //int min_sec;
     int min_usec;
     //int avg_sec;
-    //int avg_usec;
-    double avg_msec;
+    int avg_usec;
+    //double avg_msec;
     int numSent;
     int sock_opt = 1;
     // used for calculate the avg, stddev for n iterations
     int* usec_list;
-    int* sec_list;
 
     for (int i = 0; i < 4; i++)
         histogram[i] = 0;
@@ -59,11 +70,23 @@ int main (int argc, char *argv[]) {
         exit(-1);
     }
 
+    if (argv[2] == NULL) {
+        printf("Missing output csv file name...\n");
+        exit(-1);
+    }
+
     printf("Reading file: %s\n", argv[1]);
     fd = fopen(argv[1], "r");
 
+    outfd = fopen(argv[2], "w");
+
     if (fd == NULL) {
         perror("Unable to open input file");
+        exit(-1);
+    }
+
+    if (outfd == NULL) {
+        perror("Unable to open output csv file");
         exit(-1);
     }
 
@@ -90,15 +113,17 @@ int main (int argc, char *argv[]) {
 
     fscanf(fd, "size %u\n", &req_size);
     printf("Request size: %u\n", req_size);
+    //req_size = req_size / num_dest;
+    //printf("Request size on each server: %u\n", req_size);
     req_size_n = htonl(req_size);
 
     fscanf(fd, "iterations %d\n", &iter);
     printf("Iterations: %d\n", iter);
     usec_list = malloc(iter * sizeof(int));
-    sec_list = malloc(iter * sizeof(int));
 
     fscanf(fd, "l25 %d\n", &l25);
     printf("L2.5: %d\n", l25);
+    fclose(fd);
 
     l25 = htonl(l25);
 
@@ -108,6 +133,11 @@ int main (int argc, char *argv[]) {
         sock = socket(AF_INET, SOCK_STREAM, 0);
 
         setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &sock_opt, sizeof(sock_opt));
+        // 20K for TCP rcvbuf
+        int rcbf = 20 * 1024;
+        int sdbf = 20 * 1024;
+        setsockopt(listenfd, IPPROTO_TCP, SO_RCVBUF, &rcbf, sizeof(rcbf));
+        setsockopt(listenfd, IPPROTO_TCP, SO_SNDBUF, &sdbf, sizeof(sdbf));
 
         if (ntohl(l25) == 1) {
             int tos;
@@ -165,21 +195,30 @@ int main (int argc, char *argv[]) {
 
     max_usec = 0;
     min_usec = 999999999;
-    //avg_usec = 0;
-    avg_msec = 0;
+    avg_usec = 0;
     numSent = 0;
 
-    // start iterating 1000 iterations of requests to servers
+    // start iterating iter iterations of requests to servers
     for (int i = 0; i < iter; i++) {
         struct timeval tstart;
         int usec;
         int sec;
-        printf("Iteration: %d..", i);
 
         gettimeofday(&tstart, NULL);
 
         // create threads for receiving files
         for (int j = 0; j < num_dest; j++) {
+            if (num_dest > 4) {
+                struct timespec tim, tim2;
+                tim.tv_sec = 0;
+                tim.tv_nsec = 1000000;
+
+                if(nanosleep(&tim , &tim2) < 0 )   
+                {
+                    printf("Nano sleep system call failed \n");
+                    return -1;
+                }
+            }
             pthread_create(&threads[j], NULL, listen_connection, (void *) &indexes[j]);
         }
 
@@ -189,66 +228,50 @@ int main (int argc, char *argv[]) {
         }
 
         struct timeval *tv = &stop_time[0];
+        struct timeval *ts = &start_time[0];
+
+        for (int j = 1; j < num_dest; j++) {
+            if (ts->tv_sec > start_time[j].tv_sec || (ts->tv_sec == start_time[j].tv_sec && ts->tv_usec > start_time[j].tv_usec)) {
+                ts = &start_time[j];
+            }
+        }
         for (int j = 1; j < num_dest; j++) {
             if (tv->tv_sec < stop_time[j].tv_sec || (tv->tv_sec == stop_time[j].tv_sec && tv->tv_usec < stop_time[j].tv_usec)) {
                 tv = &stop_time[j];
             }
         }
-
-        sec = tv->tv_sec - tstart.tv_sec;
-        usec = tv->tv_usec - tstart.tv_usec;
-
-        if (usec < 0) {
-            usec += 1000000;
-            sec--;
-        }
-
-        printf("Duration, sec: %u, usec: %u\n", sec, usec);
-
-        int j;
-        if (usec < 50000)
-            j = 0;
-        else if (usec < 100000)
-            j = 1;
-        /*
-         *  Small mod to see if we can get an accurate count of drops on smaller tests
-         *
-         *   else if (usec < 150000)
-         *     j = 2;
-         */
-        else if (usec < 199999)
-            j = 2;
-        else
-            j = 3;
-        histogram[j]++;
+        sec = tv->tv_sec - ts->tv_sec;
+        usec = tv->tv_usec - ts->tv_usec;
 
         usec += sec * 1000000;
-        if (i > 0) {
-            numSent++;
-            if (usec < min_usec)
-                min_usec = usec;
-            if (usec > max_usec)
-                max_usec = usec;
-            //avg_usec += usec;
-            avg_msec += (usec / 1000.0);
+        sec = 0;
 
-            for (int j = 0; j < num_dest; j++) {
-                sec = stop_time[j].tv_sec - start_time[j].tv_sec;
-                usec = stop_time[j].tv_usec - start_time[j].tv_usec;
-                if (usec < 0) {
-                    usec += 1000000;
-                    sec--;
-                }
+        usec_list[i] = usec;
 
-                usec += sec * 1000000;
-                if (usec < fmin_usec[j])
-                    fmin_usec[j] = usec;
-                if (usec > fmax_usec[j])
-                    fmax_usec[j] = usec;
-                favg_usec[j] += usec;
-            }
+        numSent++;
+        if (usec < min_usec)
+            min_usec = usec;
+        if (usec > max_usec)
+            max_usec = usec;
+
+        avg_usec += usec;
+
+        for (int j = 0; j < num_dest; j++) {
+            sec = stop_time[j].tv_sec - start_time[j].tv_sec;
+            usec = stop_time[j].tv_usec - start_time[j].tv_usec;
+
+            usec += sec * 1000000;
+
+            if (usec < fmin_usec[j])
+                fmin_usec[j] = usec;
+            if (usec > fmax_usec[j])
+                fmax_usec[j] = usec;
+            favg_usec[j] += usec;
         }
+        fprintf(outfd, "%d,%d\n", i, usec);
     }
+    printf("\n");
+    fclose(outfd);
 
     // close connections
     for (int i = 0; i < num_dest; i++) {
@@ -256,26 +279,45 @@ int main (int argc, char *argv[]) {
     }
 
     if (numSent > 0) {
+        
+        avg_usec = avg_usec / numSent;
+
         for (int i = 0; i < num_dest; i++) {
-            printf("Connection: %d\nAvg: %d sec, %d usec\nMin: %d sec, %d usec\nMax: %d sec, %d usec\n", i, (favg_usec[i] / numSent) / 1000000, (favg_usec[i] / numSent) % 1000000, fmin_usec[i] / 1000000, fmin_usec[i] % 1000000,  fmax_usec[i] / 1000000, fmax_usec[i] % 1000000);
+            double ftotal_usec = favg_usec[i];
+            favg_usec[i] = favg_usec[i] / numSent;
+            double conn_sent = req_size * numSent / (1024.0 * 1024.0);
+            printf("Connection: %d\nAvg: %.3f msec\nMin: %.3f msec\nMax: %.3f msec\nGoodput: %.3f Mbps\n",
+                    i, favg_usec[i] / 1000.0, fmin_usec[i] / 1000.0, fmax_usec[i] / 1000.0, 8.0 * conn_sent / (ftotal_usec / 1000000.0));
         }
-        printf("Overall\nAvg: %.2f msec\nMin: %d sec, %d usec\nMax: %d sec, %d usec\n", (avg_msec / numSent), min_usec / 1000000, min_usec % 1000000,  max_usec / 1000000, max_usec % 1000000);
+        printf("Overall\nAvg: %.3f msec\nMin: %.3f msec\nMax: %.3f msec\n",
+                avg_usec / 1000.0, min_usec / 1000.0, max_usec / 1000.0);
 
-        /*double totalsent = iter * num_dest * file_stat.st_size;
-          double avg_gsec = (double)avg_msec / 1000;
-          double goodput = totalsent / avg_gsec;
-          double ratio = 1000000000 / 8;
-          printf("Goodput: %u Bps\n", goodput/ ratio);
-          */
-
-        double totalsent = ((double)req_size * num_dest * numSent) / 1000000;
+        double totalsent = ((double)req_size * num_dest * numSent) / (1024.0 * 1024.0);
 
         printf("Total sent: %.2f MB\n", totalsent);
-        double total_sec = avg_msec / 1000;
-        printf("Total duration: %.2f sec\n", total_sec);
+        double total_sec = (avg_usec * numSent) / 1000000.0;
+        printf("Total duration: %.4f sec\n", total_sec);
 
-        printf("Goodput: %.2f Mbps\n", 8 * totalsent / total_sec);
+        printf("Overall Goodput: %.3f Mbps\n", 8 * totalsent / total_sec);
 
+
+        // calculate the standard deviation
+        double stddev = getStdDev(avg_usec, usec_list, iter);
+        printf ("avg_usec + 3 * stddev = %f\n", avg_usec + 3 * stddev);
+        printf ("avg_usec + 2 * stddev = %f\n", avg_usec + 2 * stddev);
+        printf ("avg_usec + 1 * stddev = %f\n", avg_usec + 1 * stddev);
+        printf ("avg_usec = %f\n", (double)avg_usec);
+        for (int i = 0; i < numSent; i++) {
+            if (usec_list[i] > avg_usec + 2 * stddev) 
+                histogram[3]++;
+            else if (usec_list[i] > avg_usec + 1 * stddev) 
+                histogram[2]++;
+            else if (usec_list[i] > avg_usec) 
+                histogram[1]++;
+            else 
+                histogram[0]++;
+        }
+        
         printf("\nHistogram\n");
         for (int i = 0; i < 4; i++) {
             printf("%d - %d\n", i, histogram[i]);
@@ -293,81 +335,8 @@ int main (int argc, char *argv[]) {
     free(fmax_usec);
     free(fmin_usec);
     free(favg_usec);
+    free(usec_list);
 
-    /*max_usec = 0;
-      min_usec = 999999999;
-      avg_usec = 0;
-      numSent = 0;
-
-      setsockopt(serverfd, IPPROTO_TCP, TCP_NODELAY, &sock_opt, sizeof(sock_opt));
-
-      int i;
-      struct timeval tstart, tstop;
-      int sec;
-      int usec;
-      uint gsize;
-
-      for (i = 0; i < iter; i++) {
-      printf("Iteration: %d. Sending file.. ", i + 1);
-      char buf[100];
-      sprintf(buf, "%s\r\n\0", argv[3]);
-      write(serverfd, buf, strlen(buf));
-
-    //fd = open(argv[3], O_RDONLY);
-    gettimeofday(&tstart, NULL);
-
-    ret = sendfile(serverfd, fd, 0, stat_buf.st_size);
-
-    if (ret == fsize) {
-    ret = read(serverfd, &gsize, sizeof(uint));
-
-    int quickack = 1;
-    setsockopt(sock, IPPROTO_TCP, TCP_QUICKACK, &quickack, sizeof(quickack));
-
-    if (ret != sizeof(uint)) {
-    printf("Error! size read: %u\n", ret);
-    break;
-    }
-
-    gettimeofday(&tstop, NULL);
-
-    sec = tstop.tv_sec - tstart.tv_sec;
-    usec = tstop.tv_usec - tstart.tv_usec;
-
-    if (usec < 0) {
-    usec += 1000000;
-    sec--;
-    }
-    }
-    else {
-    printf("Error! size sent: %u\n", ret);
-    break;
-    }
-    */
-    /*printf("Completed! Duration, sec: %u, usec: %u\n", sec, usec);
-      usec += sec * 1000000;
-      if (i > 0) {
-      numSent++;
-      if (usec < min_usec)
-      min_usec = usec;
-      if (usec > max_usec)
-      max_usec = usec;
-      avg_usec += usec;
-      }
-      }
-
-    //close(fd);
-    //}
-
-    if (numSent > 0) {
-    printf("Files sent: %d\nAvg: %d sec, %d usec\nMin: %d sec, %d usec\nMax: %d sec, %d usec\n", numSent, (avg_usec / numSent) / 1000000, (avg_usec / numSent) % 1000000, min_usec / 1000000, min_usec % 1000000,  max_usec / 1000000, max_usec % 1000000);
-    }
-    else {
-    printf("Error!\n");
-    }
-
-    close(serverfd);
-    */
     return 0;
     }
 
@@ -411,3 +380,4 @@ void *listen_connection(void *ptr) {
 
     return 0;
 }
+

@@ -20,6 +20,7 @@ int main (int argc, char *argv[]) {
     struct sockaddr_in cliaddr;
     int sock_opt = 1;
     int ret;
+    srand(time(NULL));
 
     // initialize socket
 
@@ -71,9 +72,7 @@ void *listenClient(void *ptr) {
 
     uint n;
     char buf[MAX_LINE];
-    int tos;
-    socklen_t tos_len;
-    int l25;
+    int delay;
     uint req_size;
 
     free(ptr);
@@ -86,17 +85,23 @@ void *listenClient(void *ptr) {
         if (n <= 0)
             break;
 
-        memcpy(&l25, buf, sizeof(int));
-        l25 = ntohl(l25);
-
-        if (l25 == 1) {
-            getsockopt(sockfd, IPPROTO_IP, IP_TOS, &tos, &tos_len);
-            tos |= 128;
-            setsockopt(sockfd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
-        }
+        memcpy(&delay, buf, sizeof(int));
+        delay = ntohl(delay);
 
         memcpy(&req_size, buf + sizeof(int), sizeof(uint));
         req_size = ntohl(req_size);
+        /* server-side delays*/
+        if (delay != 0) {
+            delay = rand() % (delay/2 + 1) + delay/2;
+            struct timespec tim, tim2;
+            tim.tv_sec = 0;
+            tim.tv_nsec = delay * 1000000;
+
+            if(nanosleep(&tim , &tim2) < 0 )   
+            {
+                printf("Nano sleep system call failed \n");
+            }
+        }
         int err_cnt = 0;
         while(req_size > 0) {
             int send_length = req_size;
