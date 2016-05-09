@@ -1,9 +1,9 @@
 CC = gcc
 CFLAGS = -Wall -g -std=gnu99 -pthread
 
-SOURCES = l25_tcp_client.c
-HEADERS = l25_tcp_client.h
-TARGET = l25_tcp_client
+SOURCES = tcp_client.c
+HEADERS = tcp_client.h
+TARGET = tcp_client
 
 .PHONY: all clean tags submit
 

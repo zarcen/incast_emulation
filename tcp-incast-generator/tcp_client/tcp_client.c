@@ -1,4 +1,4 @@
-#include "l25_tcp_client.h"
+#include "tcp_client.h"
 #include "sys/sendfile.h"
 #include <sys/stat.h>
 #include <unistd.h>
@@ -13,6 +13,11 @@
 #include <math.h>
 
 #define MAX_READ 1000000
+
+/* Temprorarily... manually set the onset point for experiments.
+ * It could be automatically calculated by knowing the block size and
+ * the base of slow start window size instead.*/
+#define ONSET 20
 
 // prototypes
 void *listen_connection(void *ptr);
@@ -32,9 +37,13 @@ struct timeval *stop_time;
 int *fmax_usec;
 int *fmin_usec;
 int *favg_usec; 
-int l25;   
 
 int histogram[4];    
+
+typedef struct header {
+    int index;
+    int delay;
+} Header;
 
 double getStdDev(int avg, int x[], int len) {
     double var = 0;
@@ -121,11 +130,8 @@ int main (int argc, char *argv[]) {
     printf("Iterations: %d\n", iter);
     usec_list = malloc(iter * sizeof(int));
 
-    fscanf(fd, "l25 %d\n", &l25);
-    printf("L2.5: %d\n", l25);
     fclose(fd);
 
-    l25 = htonl(l25);
 
     for (int i = 0; i < num_dest; i++) {
         struct sockaddr_in servaddr;
@@ -138,17 +144,6 @@ int main (int argc, char *argv[]) {
         int sdbf = 20 * 1024;
         setsockopt(listenfd, IPPROTO_TCP, SO_RCVBUF, &rcbf, sizeof(rcbf));
         setsockopt(listenfd, IPPROTO_TCP, SO_SNDBUF, &sdbf, sizeof(sdbf));
-
-        if (ntohl(l25) == 1) {
-            int tos;
-            socklen_t tos_len;
-
-            getsockopt(sock, IPPROTO_IP, IP_TOS, &tos, &tos_len);
-            tos |= 128;
-            setsockopt(sock, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
-
-            printf("l25 protected!\n");
-        }
 
         int quickack;
         socklen_t quickack_len;
@@ -208,6 +203,8 @@ int main (int argc, char *argv[]) {
 
         // create threads for receiving files
         for (int j = 0; j < num_dest; j++) {
+            /* client-side delays*/
+            /*
             if (num_dest > 4) {
                 struct timespec tim, tim2;
                 tim.tv_sec = 0;
@@ -219,7 +216,16 @@ int main (int argc, char *argv[]) {
                     return -1;
                 }
             }
-            pthread_create(&threads[j], NULL, listen_connection, (void *) &indexes[j]);
+            */
+            Header* hp = (Header*)malloc(sizeof(Header));
+            hp->index = indexes[j];
+            hp->delay = htonl(0);
+            if (j > ONSET) {
+                // num_dest * 1ms -> approximately the transfer time
+                hp->delay = htonl(num_dest * 1); // 1ms RTT * num_dest
+            }
+            //pthread_create(&threads[j], NULL, listen_connection, (void *) &indexes[j]);
+            pthread_create(&threads[j], NULL, listen_connection, (void *) hp);
         }
 
         // wait for transfers to complete
@@ -341,13 +347,15 @@ int main (int argc, char *argv[]) {
     }
 
 void *listen_connection(void *ptr) {
-    int index = *((int *)ptr);
+    Header hp = *((Header *)ptr);
+    int index = hp.index;
+    int delay = hp.delay;
     int sock = sockets[index];
     int total = 0;
     int n;
     char buf[MAX_READ];
 
-    memcpy(buf, &l25, sizeof(int));
+    memcpy(buf, &delay, sizeof(int));
     memcpy(buf + sizeof(int), &req_size_n, sizeof(uint));
 
     gettimeofday(&start_time[index], NULL);
