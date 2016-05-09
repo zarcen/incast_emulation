@@ -18,6 +18,7 @@
  * It could be automatically calculated by knowing the block size and
  * the base of slow start window size instead.*/
 #define ONSET 20
+#define BETA 0.1
 
 // prototypes
 void *listen_connection(void *ptr);
@@ -222,7 +223,7 @@ int main (int argc, char *argv[]) {
             hp->delay = htonl(0);
             if (j > ONSET) {
                 // num_dest * 1ms -> approximately the transfer time
-                hp->delay = htonl(num_dest * 1); // 1ms RTT * num_dest
+                hp->delay = htonl(num_dest * (1 + BETA)); // 1ms RTT * num_dest
             }
             //pthread_create(&threads[j], NULL, listen_connection, (void *) &indexes[j]);
             pthread_create(&threads[j], NULL, listen_connection, (void *) hp);
